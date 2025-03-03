@@ -1,4 +1,4 @@
-package com.example.pearpin
+package com.sunnydodti.pearpin
 
 import io.flutter.embedding.android.FlutterActivity
 
