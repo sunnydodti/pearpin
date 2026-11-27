@@ -1,18 +1,8 @@
-# Example: GitHub Pages Deployment (Tag-Conditioned)
-# Place this in your app repo at: .github/workflows/flutter-pages.yml
-#
-# This workflow deploys to GitHub Pages conditioned on tag pattern.
-# Configure PAGES_TAG_REGEX to control which tags trigger deployment.
-#
-# Core principle: The Git tag suffix determines prerelease status.
-# - Stable tags (no suffix) deploy by default
-# - Pre-release tags (-alpha, -beta, -dev, -rc) can be configured to deploy or not
-
 name: "Deploy to GitHub Pages"
 
 on:
   workflow_run:
-    workflows: ["PearPin Release"]  # triggers from the release workflow above
+    workflows: ["PearPin Release"]
     types:
       - completed
     branches: [main]
@@ -21,14 +11,10 @@ jobs:
   deploy-to-github-pages:
     runs-on: ubuntu-latest
     env:
-      FLUTTER_BASE: "."     # or "." for root-level Flutter apps
+      FLUTTER_BASE: "."
       MAIN_FILE: "main.dart"
       PAGES_ENABLED: "true"
-      # Only stable tags (no -suffix) deploy by default:
-      # PAGES_TAG_REGEX: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
-      # Allow stable + specific flavors (alpha or beta):
-      PAGES_TAG_REGEX: "^v[0-9]+\\.[0-9]+\\.[0-9]+(-(alpha|beta)(\\.([0-9]+))?)?$"
-      # Any tag (v*): PAGES_TAG_REGEX: "^v.*$"
+      PAGES_TAG_REGEX: "^v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta)(\.[0-9]+)?)?$"
 
     steps:
       - name: "Check tag eligibility for GitHub Pages"
@@ -50,7 +36,7 @@ jobs:
 
       - name: "Checkout tagged commit"
         if: steps.check_tag.outputs.should_deploy == 'true'
-        uses: actions/checkout@v4
+        uses: actions@v4
         with:
           ref: "${{ github.event.workflow_run.head_sha }}"
 
