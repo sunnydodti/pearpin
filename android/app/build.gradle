@@ -40,7 +40,14 @@ android {
         }
         alpha {
             dimension "flavor-type"
+            applicationIdSuffix ".alpha"
             versionNameSuffix "-alpha"
+            resValue "string", "app_name", "pear_pin"
+        }
+        beta {
+            dimension "flavor-type"
+            applicationIdSuffix ".beta" 
+            versionNameSuffix "-beta"
             resValue "string", "app_name", "pear_pin"
         }
         prd {

@@ -1,50 +1,84 @@
-name: Deploy to GitHub Pages
+# Example: GitHub Pages Deployment (Tag-Conditioned)
+# Place this in your app repo at: .github/workflows/flutter-pages.yml
+#
+# This workflow deploys to GitHub Pages conditioned on tag pattern.
+# Configure PAGES_TAG_REGEX to control which tags trigger deployment.
+#
+# Core principle: The Git tag suffix determines prerelease status.
+# - Stable tags (no suffix) deploy by default
+# - Pre-release tags (-alpha, -beta, -dev, -rc) can be configured to deploy or not
+
+name: "Deploy to GitHub Pages"
 
 on:
   workflow_run:
-    workflows: ["PearPin ALPHA CI"]
+    workflows: ["PearPin Release"]  # triggers from the alpha workflow above
     types:
       - completed
-    branches:
-      - main
+    branches: [main]
 
 jobs:
   deploy-to-github-pages:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: >
+      ${{ github.event.workflow_run.conclusion == 'success' && env.PAGES_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     env:
-      FLUTTER_BASE: "."
-      MAIN_FILE: main.dart
-      FLAVOUR: alpha
+      FLUTTER_BASE: "."     # or "." for root-level Flutter apps
+      MAIN_FILE: "main.dart"
+      PAGES_ENABLED: "true"
+      # Only stable tags (no -suffix) deploy by default:
+      # PAGES_TAG_REGEX: "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+      # Allow stable + specific flavors (alpha or beta):
+      PAGES_TAG_REGEX: "^v[0-9]+\\.[0-9]+\\.[0-9]+(-(alpha|beta)(\\.([0-9]+))?)?$"
+      # Any tag (v*): PAGES_TAG_REGEX: "^v.*$"
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-        with:
-          ref: ${{ github.ref_name }}
+      - name: "Check tag eligibility for GitHub Pages"
+        id: check_tag
+        env:
+          HEAD_REF: "${{ github.event.workflow_run.head_branch }}"
+          TAG_REGEX: "${{ env.PAGES_TAG_REGEX }}"
+        run: |
+          echo "Evaluating ref '$HEAD_REF' against pattern '$TAG_REGEX'"
+          if [[ "$HEAD_REF" =~ $TAG_REGEX ]]; then
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Set up Flutter
+      - name: "Checkout tagged commit"
+        if: steps.check_tag.outputs.should_deploy == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: "${{ github.event.workflow_run.head_sha }}"
+
+      - name: "Set up Flutter"
+        if: steps.check_tag.outputs.should_deploy == 'true'
         uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version-file: ${{ env.FLUTTER_BASE }}/pubspec.yaml
+          flutter-version-file: "${{ env.FLUTTER_BASE }}/pubspec.yaml"
 
-      - name: Enable web
+      - name: "Enable web"
+        if: steps.check_tag.outputs.should_deploy == 'true'
         run: flutter config --enable-web
 
-      - name: Get dependencies
-        working-directory: ${{ env.FLUTTER_BASE }}
+      - name: "Get dependencies"
+        if: steps.check_tag.outputs.should_deploy == 'true'
+        working-directory: "${{ env.FLUTTER_BASE }}"
         run: flutter pub get
 
-      - name: Build web
-        working-directory: ${{ env.FLUTTER_BASE }}
+      - name: "Build web"
+        if: steps.check_tag.outputs.should_deploy == 'true'
+        working-directory: "${{ env.FLUTTER_BASE }}"
         run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"
 
-      - name: Deploy to GitHub Pages
+      - name: "Deploy to GitHub Pages"
+        if: steps.check_tag.outputs.should_deploy == 'true'
         uses: peaceiris/actions-gh-pages@v3
         with:
           personal_token: ${{ secrets.RELEASE_TOKEN }}
-          publish_dir: ${{ env.FLUTTER_BASE }}/build/web
-          user_name: 'github-ci[bot]'
-          user_email: 'github-actions[bot]@users.noreply.github.com'
-          commit_message: 'Deploy to GitHub Pages'
+          publish_dir: "${{ env.FLUTTER_BASE }}/build/web"
+          user_name: "github-ci[bot]"
+          user_email: "github-actions[bot]@users.noreply.github.com"
+          commit_message: "Deploy to GitHub Pages"

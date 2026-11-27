@@ -1,67 +1,60 @@
-name: "PearPin ALPHA CI"
+# Example: Android Pre-release Workflow (Tag-Based)
+# Place this in your app repo at: .github/workflows/flutter-android-prerelease.yml
+#
+# This workflow demonstrates pre-release builds triggered by tags with
+# suffixes like -alpha, -dev, -beta, -rc.
+#
+# Key point: The tag suffix determines the prerelease status and flavor.
+# - Tags without suffix (e.g., v1.0.0) → prerelease: false (stable release), flavor=stable
+# - Tags with -alpha suffix → prerelease: true, flavor=alpha
+# - Tags with -beta suffix → prerelease: true, flavor=beta
+# - The parse-tag.sh script extracts flavor from the tag suffix automatically.
+#
+# Example tags and their behavior:
+#   v1.0.0          → stable, version 1.0.0, flavor=stable, prerelease: false, APK_SUFFIX=""
+#   v1.0.0-alpha    → pre-release, version 1.0.0-alpha, flavor=alpha, prerelease: true, APK_SUFFIX="-alpha"
+#   v1.0.0-beta     → pre-release, version 1.0.0-beta, flavor=beta, prerelease: true, APK_SUFFIX="-beta"
+
+name: "PearPin Pre-release"
+
 on:
   push:
-    branches:
-      - main
-
+    tags:
+      - "asdfadfasdfasdfasldkfadklfalskfqeiorupqweoiu"                           # all tags starting with v
 jobs:
-  build-info:
-    runs-on: ubuntu-latest
-    outputs:
-      app-version: ${{ steps.set_version.outputs.app_version }}
-    env:
-      FLUTTER_BASE: "."
-      FLAVOUR: alpha
-
-    steps:
-      - name: "Clone repository"
-        uses: actions/checkout@v3
-        with:
-          ref: ${{ github.ref_name }}
-
-      - name: "Checkout workflows repo"
-        uses: actions/checkout@v4
-        with:
-          repository: sunnydodti/workflows
-          token: ${{ secrets.BUILD_INFO_TOKEN }}
-          path: workflows
-          ref: main
-
-      - name: "Get App Version"
-        id: get_version
-        run: |
-          chmod +x workflows/scripts/android/get-app-version.sh
-          workflows/scripts/android/get-app-version.sh "$FLUTTER_BASE"
-
-      - name: "Set App Version"
-        id: "set_version"
-        run: echo "app_version=$APP_VERSION-$FLAVOUR" >> $GITHUB_OUTPUT
-
   build-android:
-    if: ${{ github.ref_name == 'main' }}
-    needs: build-info
     runs-on: ubuntu-latest
     env:
-      FLAVOUR: alpha
-      MAIN_FILE: main.dart
-      FLUTTER_BASE: "."
+      FLUTTER_BASE: "."               # set per app: "." or subfolder name
+      MAIN_FILE: "main.dart"
+      DEFAULT_FLAVOR: "prod"          # used when tag has no -<flavor> suffix
 
     steps:
-      - name: "Clone repository"
-        uses: actions/checkout@v3
+      - name: "Clone app repository"
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.ref_name }}
 
-      - name: "Checkout workflows repo"
+      - name: "Checkout workflows repo (android scripts)"
         uses: actions/checkout@v4
         with:
           repository: sunnydodti/workflows
           token: ${{ secrets.BUILD_INFO_TOKEN }}
           path: workflows
-          ref: main
+          ref: android                      # pinned to android branch for v1 stability
 
-      - name: Set up Java
-        uses: actions/setup-java@v2
+      - name: "Parse tag version and flavor"
+        run: |
+          chmod +x workflows/scripts/flutter/android/parse-tag.sh
+          workflows/scripts/flutter/android/parse-tag.sh "${{ github.ref_name }}"
+        # Outputs: APP_VERSION, BUILD_NUMBER, FLAVOR, APK_SUFFIX, IS_PRERELEASE
+        # The tag suffix (-alpha, -beta) is parsed to:
+        #   - FLAVOR: the token before the first dot (e.g. alpha, beta)
+        #   - APK_SUFFIX: "-<flavor>" (appended to APK filename)
+        #   - IS_PRERELEASE: "true" for any -suffix tag, "false" for stable
+
+      - name: "Set up Java"
+        uses: actions/setup-java@v4
         with:
           java-version: 17
           distribution: "temurin"
@@ -70,40 +63,42 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version-file: ${{ env.FLUTTER_BASE }}/pubspec.yaml
+          flutter-version-file: "${{ env.FLUTTER_BASE }}/pubspec.yaml"
 
-      - run: tree
-      - name: "setup android sdk"
+      - name: "Setup Android SDK"
         run: |
-          chmod +x workflows/scripts/android/setup-android-sdk.sh
-          workflows/scripts/android/setup-android-sdk.sh
+          chmod +x workflows/scripts/flutter/android/setup-android-sdk.sh
+          workflows/scripts/flutter/android/setup-android-sdk.sh
 
-      - name: "decode keystore"
+      - name: "Decode keystore"
+        env:
+          KEYSTORE_PATH: "${{ github.workspace }}/keystore.jks"
         run: |
-          chmod +x workflows/scripts/decode-keystore.sh
-          workflows/scripts/decode-keystore.sh "${{ secrets.KEYSTORE }}"
+          echo "${{ secrets.KEYSTORE }}" | base64 --decode > "$KEYSTORE_PATH"
 
-      - name: "build apk"
+      - name: "Build APK"
         run: |
-          chmod +x workflows/scripts/android/build-apk.sh
-          workflows/scripts/android/build-apk.sh "$FLUTTER_BASE" "$FLAVOUR" "$MAIN_FILE"
+          chmod +x workflows/scripts/flutter/android/build-apk.sh
+          workflows/scripts/flutter/android/build-apk.sh "$FLUTTER_BASE" "$FLAVOR" "$MAIN_FILE" "$APP_VERSION" "$BUILD_NUMBER"
+        # Builds with --build-name and --build-number from tag
 
-      - name: "sign apk"
+      - name: "Sign APK"
+        env:
+          KEYSTORE_PATH: "${{ github.workspace }}/keystore.jks"
         run: |
-          chmod +x workflows/scripts/android/sign-apk.sh
-          workflows/scripts/android/sign-apk.sh "$FLUTTER_BASE" "-$FLAVOUR" "${{ secrets.KEYSTORE_PASSWORD }}" "${{ secrets.KEY_ALIAS }}" "${{ secrets.KEY_PASSWORD }}"
+          chmod +x workflows/scripts/flutter/android/sign-apk.sh
+          workflows/scripts/flutter/android/sign-apk.sh "$FLUTTER_BASE" "$APK_SUFFIX" "${{ secrets.KEYSTORE_PASSWORD }}" "${{ secrets.KEY_ALIAS }}" "${{ secrets.KEY_PASSWORD }}"
 
-      - name: "rename apk"
+      - name: "Rename APK"
         run: |
-          chmod +x workflows/scripts/android/rename-apk.sh
-          workflows/scripts/android/rename-apk.sh "$FLUTTER_BASE" "${{ vars.APP_NAME }}" "-$FLAVOUR" "${{ needs.build-info.outputs.app-version }}"
+          chmod +x workflows/scripts/flutter/android/rename-apk.sh
+          workflows/scripts/flutter/android/rename-apk.sh "$FLUTTER_BASE" "${{ vars.APP_NAME }}" "$APK_SUFFIX" "$APP_VERSION"
+        # Renames to: pearpin_1.0.0-alpha_arm64-v8a-release.apk (with -alpha suffix)
 
-      - run: tree
-
-      - name: "Release"
+      - name: "Create Release (pre-release)"
         uses: ncipollo/release-action@v1
         with:
-          artifacts: ${{ env.FLUTTER_BASE }}/build/app/outputs/flutter-apk/*.apk
-          tag: "v${{ needs.build-info.outputs.app-version}}+${{github.run_number}}.${{ github.run_attempt }}"
+          artifacts: "${{ env.FLUTTER_BASE }}/build/app/outputs/flutter-apk/*.apk"
+          tag: "${{ github.ref_name }}"
+          prerelease: ${{ env.IS_PRERELEASE == 'true' }}   # true for -alpha, -beta tags
           token: ${{ secrets.RELEASE_TOKEN }}
-          prerelease: false
