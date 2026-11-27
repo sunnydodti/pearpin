@@ -43,7 +43,7 @@ jobs:
           repository: sunnydodti/workflows
           token: ${{ secrets.BUILD_INFO_TOKEN }}
           path: workflows
-          ref: android                      # pinned to android branch for v1 stability
+          ref: v1
 
       - name: "Parse tag version and flavor"
         run: |
