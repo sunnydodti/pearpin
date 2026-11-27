@@ -38,7 +38,7 @@ jobs:
           repository: sunnydodti/workflows
           token: ${{ secrets.BUILD_INFO_TOKEN }}
           path: workflows
-          ref: main
+          ref: v1
 
       - name: "Parse tag version and flavor"
         run: |
